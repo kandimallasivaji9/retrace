@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 export type Reversibility = "reversible" | "untracked";
-export type Status = "applied" | "failed" | "undone" | "untracked";
+export type Status = "applied" | "failed" | "undone" | "untracked" | "planned";
 
 export interface Entry {
   id: number;
@@ -31,6 +31,8 @@ export interface NewEntry {
   before: unknown;
   after: unknown;
   isError: boolean;
+  /** true for dry-run entries: recorded, but nothing was changed */
+  planned?: boolean;
 }
 
 export interface RunSummary {
@@ -93,7 +95,9 @@ export class Journal {
         after: n.after == null ? null : JSON.stringify(n.after),
         is_error: n.isError ? 1 : 0,
       };
-      const status: Status = n.reversibility === "untracked" ? "untracked" : n.isError ? "failed" : "applied";
+      const status: Status = n.planned
+        ? "planned"
+        : n.reversibility === "untracked" ? "untracked" : n.isError ? "failed" : "applied";
       const info = this.db
         .prepare(`INSERT INTO actions (run_id, step, ts, tool, args, reversibility, before, after, is_error, status, prev_hash, hash)
                   VALUES (@run_id, @step, @ts, @tool, @args, @reversibility, @before, @after, @is_error, @status, @prev_hash, @hash)`)

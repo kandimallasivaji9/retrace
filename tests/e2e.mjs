@@ -15,11 +15,16 @@ const fsServer = path.resolve("node_modules/@modelcontextprotocol/server-filesys
 const retrace = (...args) => execFileSync("node", [cli, ...args], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 const f = (name) => path.join(work, name);
 
-async function agentSession(actions) {
+async function agentSession(actions, wrapFlags = []) {
   const client = new Client({ name: "test-agent", version: "0" });
-  await client.connect(new StdioClientTransport({ command: "node", args: [cli, "wrap", "--", "node", fsServer, work], env, stderr: "ignore" }));
-  for (const [name, args] of actions) await client.callTool({ name, arguments: args });
+  await client.connect(new StdioClientTransport({ command: "node", args: [cli, "wrap", ...wrapFlags, "--", "node", fsServer, work], env, stderr: "ignore" }));
+  const texts = [];
+  for (const [name, args] of actions) {
+    const res = await client.callTool({ name, arguments: args });
+    texts.push(res.content.filter((c) => c.type === "text").map((c) => c.text).join("\n"));
+  }
   await client.close();
+  return texts;
 }
 
 // 1. Agent overwrites a file, creates one, moves one, makes a dir, and reads (not journaled).
@@ -53,7 +58,34 @@ assert.ok(refused);
 assert.equal(fs.readFileSync(f("notes.txt"), "utf8"), "human fixed it by hand\n");
 console.log("✓ conflict detected, human's change kept\n");
 
-// 3. Tamper check: the chain is intact, then someone rewrites history.
+// 3. Dry run: the agent "does" everything, nothing on disk changes.
+fs.writeFileSync(f("todo.txt"), "Buy milk\nCall mom\n");
+const snapshot = () => fs.readdirSync(work).sort().map((n) => [n, fs.statSync(f(n)).isFile() ? fs.readFileSync(f(n), "utf8") : "<dir>"]);
+const beforeDry = JSON.stringify(snapshot());
+const previews = await agentSession([
+  ["write_file", { path: f("todo.txt"), content: "Buy grog\nCall the captain\n" }],
+  ["write_file", { path: f("brand-new.txt"), content: "hello\n" }],
+  ["move_file", { source: f("notes.txt"), destination: f("old-notes.txt") }],
+  ["create_directory", { path: f("archive") }],
+  ["edit_file", { path: f("todo.txt"), edits: [{ oldText: "Buy milk", newText: "Buy oat milk" }] }],
+  ["write_file", { path: "/etc/hosts", content: "pwned" }],
+], ["--dry-run"]);
+previews.forEach((t) => console.log(t + "\n"));
+assert.equal(JSON.stringify(snapshot()), beforeDry, "dry run must not touch the disk");
+assert.match(previews[0], /Would overwrite[\s\S]*-Buy milk[\s\S]*\+Buy grog/);
+assert.match(previews[1], /Would create/);
+assert.match(previews[2], /Would move/);
+assert.match(previews[3], /Would create directory/);
+assert.match(previews[4], /Planned edit[\s\S]*\+Buy oat milk/);
+assert.match(previews[5], /outside the allowed directories/);
+assert.ok(!previews[5].includes("localhost"), "must not leak files outside allowed dirs");
+const dryLog = retrace("log");
+console.log(dryLog);
+assert.match(dryLog, /dry run/);
+assert.match(retrace("undo", "--run"), /Nothing to undo/);
+console.log("✓ dry run previewed 6 actions, disk untouched, no leaks outside allowed dirs\n");
+
+// 4. Tamper check: the chain is intact, then someone rewrites history.
 console.log(retrace("verify"));
 const { default: Database } = await import("better-sqlite3");
 const db = new Database(journal);

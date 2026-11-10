@@ -7,6 +7,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { classify } from "./adapters/filesystem.js";
 import { readState } from "./fs-state.js";
 import { Journal } from "./journal.js";
+import { allowedDirectories, previewCall } from "./preview.js";
 import { VERSION } from "./version.js";
 
 const log = (msg: string) => process.stderr.write(`[retrace] ${msg}\n`);
@@ -15,7 +16,7 @@ const log = (msg: string) => process.stderr.write(`[retrace] ${msg}\n`);
  * Sits between the agent and a real MCP server.
  * The agent sees the same tools; every change gets a before/after snapshot in the journal.
  */
-export async function startProxy(command: string, args: string[], opts: { journal?: string } = {}) {
+export async function startProxy(command: string, args: string[], opts: { journal?: string; dryRun?: boolean } = {}) {
   const journal = new Journal(opts.journal);
   const runId = randomUUID();
 
@@ -24,6 +25,7 @@ export async function startProxy(command: string, args: string[], opts: { journa
     new StdioClientTransport({ command, args, env: process.env as Record<string, string>, stderr: "inherit" }),
   );
   const upstreamName = upstream.getServerVersion()?.name ?? command;
+  const allowed = opts.dryRun ? await allowedDirectories(upstream) : [];
 
   const server = new Server(
     { name: `retrace(${upstreamName})`, version: VERSION },
@@ -37,6 +39,16 @@ export async function startProxy(command: string, args: string[], opts: { journa
     const plan = classify(name, toolArgs);
 
     if (plan.kind === "read") return (await upstream.callTool(req.params)) as any;
+
+    if (opts.dryRun) {
+      const text = await previewCall(upstream, name, toolArgs, plan, allowed);
+      journal.record({
+        runId, tool: name, args: toolArgs,
+        reversibility: plan.kind === "tracked" ? "reversible" : "untracked",
+        before: null, after: null, isError: false, planned: true,
+      });
+      return { content: [{ type: "text", text }] };
+    }
 
     if (plan.kind === "untracked") {
       const result = await upstream.callTool(req.params);
@@ -72,5 +84,5 @@ export async function startProxy(command: string, args: string[], opts: { journa
   server.onclose = shutdown;
 
   await server.connect(new StdioServerTransport());
-  log(`wrapping ${upstreamName}, run ${runId.slice(0, 8)}`);
+  log(`wrapping ${upstreamName}, run ${runId.slice(0, 8)}${opts.dryRun ? " (DRY RUN: nothing will be changed)" : ""}`);
 }

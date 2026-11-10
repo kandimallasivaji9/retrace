@@ -56,11 +56,13 @@ program
   .command("wrap")
   .description("run an MCP server behind Retrace, e.g. retrace wrap -- npx @modelcontextprotocol/server-filesystem ./project")
   .option("--journal <path>", "journal file (default ~/.retrace/journal.db)")
+  .option("--dry-run", "preview every change; nothing is written (or set RETRACE_DRY_RUN=1)")
   .argument("<command...>", "the MCP server command to wrap")
   .passThroughOptions()
   .action(async (command: string[], opts) => {
     const [cmd, ...args] = command;
-    await startProxy(cmd, args, { journal: opts.journal });
+    const dryRun = !!opts.dryRun || process.env.RETRACE_DRY_RUN === "1";
+    await startProxy(cmd, args, { journal: opts.journal, dryRun });
   });
 
 program
@@ -79,9 +81,11 @@ program
     }
     const runId = findRun(j, opts.run);
     const entries = j.entries(runId);
-    console.log(`Run ${short(runId)} (${entries.length} actions)`);
+    const dry = entries.length > 0 && entries.every((e) => e.status === "planned");
+    console.log(`Run ${short(runId)} (${entries.length} actions${dry ? ", dry run" : ""})`);
     entries.forEach(printEntry);
-    const untracked = entries.filter((e) => e.status === "untracked").length;
+    if (dry) console.log("\n  Dry run: nothing was changed. Run without --dry-run to apply.");
+    const untracked = entries.filter((e) => e.status === "untracked" || (e.status === "planned" && e.reversibility === "untracked")).length;
     if (untracked) console.log(`\n  ${untracked} action(s) went to tools Retrace can't undo yet.`);
   });
 

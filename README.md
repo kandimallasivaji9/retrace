@@ -76,6 +76,16 @@ Every action falls into one of three classes:
 | **Compensable** | Retrace runs a reverse action | Close a created issue, delete a Slack message |
 | **Irreversible** | Can't be taken back, so it's held for approval | Sending an email |
 
+## Dry run
+
+Not sure what an agent will do? Let it plan first:
+
+```bash
+retrace wrap --dry-run -- npx @modelcontextprotocol/server-filesystem ./project
+```
+
+The agent gets a preview instead of a real change: a diff for every write or edit, "would move A → B", "would create folder X". Nothing touches the disk. `retrace log` shows the whole plan, then run again without `--dry-run` to apply it.
+
 ## Use with Claude Desktop
 
 In `claude_desktop_config.json`, wrap any existing server:
@@ -98,6 +108,7 @@ Retrace is honest about what it can't do:
 
 - **It can't unsend things.** A Slack message can be deleted, but someone may have already read it. Truly irreversible actions are held for approval instead.
 - **Postgres support is narrow at first.** Single-table `INSERT`, `UPDATE`, and `DELETE`. DDL, triggers, and cascades aren't reversed yet.
+- **Dry runs don't simulate state.** If the agent "writes" a file during a dry run and then reads it, it sees the original. Tools Retrace can't preview are blocked, not run.
 - **Calls that skip the proxy aren't tracked.** If the agent reaches a system some other way, Retrace never sees it.
 - **Your data stays local.** The journal lives in `~/.retrace/journal.db` and includes before-state snapshots, so treat it like the data it protects.
 
