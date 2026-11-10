@@ -1,90 +1,71 @@
 # Retrace
 
-**Ctrl+Z for AI agents. Undo any tool call your agent regrets.**
+**Ctrl+Z for AI agents. Undo any file or database change your agent makes.**
 
+[![CI](https://github.com/kandimallasivaji9/retrace/actions/workflows/ci.yml/badge.svg)](https://github.com/kandimallasivaji9/retrace/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/retrace-agent)](https://www.npmjs.com/package/retrace-agent)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![npm](https://img.shields.io/npm/v/retrace)](https://www.npmjs.com/package/retrace) <!-- TODO: confirm npm name is available; fallback: @retrace/cli -->
-[![CI](https://github.com/kandimallasivaji9/retrace/actions/workflows/ci.yml/badge.svg)](https://github.com/kandimallasivaji9/retrace/actions)
 [![MCP](https://img.shields.io/badge/MCP-compatible-purple)](https://modelcontextprotocol.io)
 
-<!-- TODO: replace with demo GIF (see DEMO_SCRIPT.md). Keep it under 5 MB and 20 seconds. -->
-![Agent deletes 400 rows, retrace undo brings them back](docs/demo.gif)
+![An agent deletes 412 customers ($64,581/mo of MRR). retrace undo brings every row back.](https://raw.githubusercontent.com/kandimallasivaji9/retrace/main/docs/demo.gif)
+
+*The agent asked first. The human clicked the wrong option. One command fixed it.*
+
+## Try it in 30 seconds
 
 ```bash
-npx retrace wrap -- npx @modelcontextprotocol/server-filesystem ./project
+npm install -g retrace-agent
+
+# Put Retrace in front of any MCP server
+retrace wrap -- npx -y @modelcontextprotocol/server-filesystem ./project
 ```
 
-Your agent works exactly as before. Every tool call is logged with its before-state, so when something goes wrong:
+Your agent works exactly as before. Every change is recorded with its before-state, so when something goes wrong:
 
 ```bash
 retrace log            # see what the agent did
 retrace undo --run     # roll back the whole run, newest step first
 ```
 
+Prefer not to install? Use `npx -y retrace-agent wrap -- ...` instead.
+
 ## Why this exists
 
-- **Agents act on real systems now.** They write files, run SQL, open PRs, post to Slack. One bad step can wipe data you can't get back.
-- **Checkpoints only cover the chat or the code.** Most agent tools can rewind the conversation or your working directory. Nothing rewinds the side effects in your database, GitHub, or Slack.
-- **Retrace works with the agent you already use.** It's an MCP proxy, so there's no framework to adopt and no code to change.
+- **Agents act on real systems now.** They edit files and run SQL. One bad step, or one wrong click on "approve", can wipe data you need.
+- **Asking first isn't enough.** Good agents confirm before destructive actions. People still approve the wrong thing.
+- **Checkpoints don't cover side effects.** Agent tools can rewind the chat or your code. Nothing rewinds the rows your agent deleted.
+- **No framework to adopt.** Retrace is an MCP server, so it works with the agent you already use.
 
-## Works with
+## What it can undo today
 
-| Agent / client | Status |
-|---|---|
-| Claude Desktop | ✅ |
-| Claude Code | ✅ |
-| Cursor | ✅ |
-| Any MCP client (TypeScript / Python SDK) | ✅ |
-
-| Upstream tool | Undo type | Status |
+| Target | How | Status |
 |---|---|---|
-| Filesystem | Reversible (exact restore) | ✅ |
-| Postgres 18+ (`retrace postgres`) | Reversible (INSERT / UPDATE / DELETE) | ✅ |
-| GitHub | Compensable (close, revert, recreate branch) | 🚧 |
-| Slack | Compensable (delete message) | 🚧 |
-| Stripe, Notion, Google Workspace | | Planned |
+| Files (wraps `@modelcontextprotocol/server-filesystem`) | Exact restore of writes, edits, moves, new folders | ✅ |
+| Postgres 18+ (`retrace postgres`) | Row-level undo of `INSERT`, `UPDATE`, `DELETE` | ✅ |
+| GitHub, Slack, Stripe | Compensating actions (close, delete, refund) | Planned |
 
-<!-- TODO: update statuses to match what actually ships at launch. -->
+| Client | Status |
+|---|---|
+| Claude Desktop | ✅ Tested |
+| Claude Code, Cursor, other stdio MCP clients | Should work (standard MCP over stdio). Reports welcome. |
 
 ## Features
 
-- **Undo a step or a whole run** with `retrace undo <step>` or `retrace undo --run <id>`.
-- **Dry-run any agent** with `--dry-run` to see what it *would* change without touching anything.
-- **Pause irreversible actions** like sending an email until you approve them.
-- **Catch conflicts** before undoing. If someone changed the data after the agent, Retrace warns and skips instead of overwriting their work.
-- **Keep a tamper-evident audit log.** Every action is hash-chained in a local SQLite journal.
-- **Write your own adapter** in about 50 lines. <!-- TODO: verify once adapter API is final -->
-
-## How it works
-
-```mermaid
-flowchart TD
-  A[Your agent] -->|MCP tool call| P
-  subgraph P[Retrace proxy]
-    G[Policy gate<br/>dry-run, approvals] --> AD[Adapter<br/>snapshot + inverse]
-    AD --> J[Action journal<br/>append-only, hash-chained]
-    J --> U[Undo engine<br/>reverse order, conflict check]
-  end
-  P --> S[Upstream MCP servers<br/>Postgres, filesystem, GitHub, Slack]
-```
-
-Every action falls into one of three classes:
-
-| Class | Meaning | Example |
-|---|---|---|
-| **Reversible** | Retrace restores the exact before-state | File write, row update |
-| **Compensable** | Retrace runs a reverse action | Close a created issue, delete a Slack message |
-| **Irreversible** | Can't be taken back, so it's held for approval | Sending an email |
+- **Undo a step or a whole run** with `retrace undo <id>` or `retrace undo --run`.
+- **Dry-run any agent** with `--dry-run`: real diffs and exact row counts, nothing changed.
+- **Catch conflicts.** If a person changed the data after the agent, undo stops instead of overwriting their work.
+- **Block what can't be undone.** `DROP`, `ALTER`, `TRUNCATE`, multi-statement SQL, and writes to tables without a primary key are refused.
+- **Keep a tamper-evident audit log.** Every action is hash-chained in a local SQLite journal; `retrace verify` checks it.
 
 ## Postgres
 
-Retrace ships its own Postgres MCP server. Reads work normally; every `INSERT`, `UPDATE` and `DELETE` is recorded row by row, so it can be undone exactly. Schema changes (`DROP`, `ALTER`, `TRUNCATE`) are blocked.
+Retrace ships its own Postgres MCP server. Reads work normally, and every write is recorded row by row so it can be undone exactly.
 
 ```bash
 retrace postgres --url postgres://localhost/mydb
 ```
 
-No database handy? `npm run demo-db` starts a throwaway Postgres 18 with 500 sample customers.
+No database handy? Clone the repo and run `npm run demo-db` for a throwaway Postgres 18 with 500 sample customers (it's the database in the GIF).
 
 ```bash
 retrace log
@@ -100,63 +81,86 @@ The journal never stores passwords. If your database needs one, set `RETRACE_PG_
 Not sure what an agent will do? Let it plan first:
 
 ```bash
-retrace wrap --dry-run -- npx @modelcontextprotocol/server-filesystem ./project
+retrace wrap --dry-run -- npx -y @modelcontextprotocol/server-filesystem ./project
+retrace postgres --dry-run --url postgres://localhost/mydb
 ```
 
-The agent gets a preview instead of a real change: a diff for every write or edit, "would move A → B", "would create folder X". Nothing touches the disk. `retrace log` shows the whole plan, then run again without `--dry-run` to apply it.
+The agent gets a preview instead of a real change: a diff for every file write, or "Would DELETE 412 rows" with sample rows for SQL. Nothing is changed. `retrace log` shows the whole plan.
 
 ## Use with Claude Desktop
 
-In `claude_desktop_config.json`, wrap any existing server:
+In Claude Desktop, open **Settings → Developer → Edit Config** and add:
 
 ```json
 {
   "mcpServers": {
-    "filesystem": {
+    "files": {
       "command": "npx",
-      "args": ["retrace", "wrap", "--",
-               "npx", "@modelcontextprotocol/server-filesystem", "/Users/you/project"]
+      "args": ["-y", "retrace-agent", "wrap", "--",
+               "npx", "-y", "@modelcontextprotocol/server-filesystem", "/Users/you/project"]
+    },
+    "db": {
+      "command": "npx",
+      "args": ["-y", "retrace-agent", "postgres", "--url", "postgres://localhost/mydb"]
     }
   }
 }
 ```
 
+If Claude Desktop can't find `npx`, use its full path (`which npx`).
+
+## How it works
+
+```mermaid
+flowchart TD
+  A[Your agent] -->|MCP tool call| R
+  subgraph R[Retrace]
+    D[Dry-run / policy<br/>preview, block unsafe calls] --> S[Snapshot<br/>files or rows, before + after]
+    S --> J[Journal<br/>append-only, hash-chained]
+    J --> U[Undo engine<br/>newest first, conflict check]
+  end
+  R --> T[Your files / your Postgres]
+```
+
+- **Files:** before each change, Retrace snapshots the paths the tool call touches. Undo restores those exact bytes.
+- **Postgres:** every write runs with `RETURNING old.*, new.*` (new in Postgres 18), so Retrace records each affected row as it was and as it became, inside the same transaction. Undo rebuilds rows with their real column types and puts them back in one transaction.
+
 ## Safety and limits
 
 Retrace is honest about what it can't do:
 
-- **It can't unsend things.** A Slack message can be deleted, but someone may have already read it. Truly irreversible actions are held for approval instead.
-- **Postgres needs version 18+** (Retrace uses `RETURNING old/new` to record changes). Tables need a primary key; writes to tables without one are refused.
-- **Cascades and triggers aren't reversed yet.** If deleting a row cascades to other tables, only the row the agent deleted comes back. `WITH` and `MERGE` statements are blocked for now.
-- **Dry runs don't simulate state.** If the agent "writes" a file during a dry run and then reads it, it sees the original. Tools Retrace can't preview are blocked, not run.
-- **Calls that skip the proxy aren't tracked.** If the agent reaches a system some other way, Retrace never sees it.
-- **Your data stays local.** The journal lives in `~/.retrace/journal.db` and includes before-state snapshots, so treat it like the data it protects.
+- **Postgres needs version 18+**, and tables need a primary key.
+- **Cascades and triggers aren't reversed yet.** If a delete cascades to other tables, only the rows the agent deleted come back. `WITH` and `MERGE` statements are blocked for now.
+- **Dry runs don't simulate state.** If the agent "writes" a file during a dry run and then reads it, it sees the original.
+- **Only calls that go through Retrace are tracked.**
+- **Files over 10 MB aren't snapshotted**, and `create_directory` only removes the last folder it created.
+- **Your data stays local.** The journal at `~/.retrace/journal.db` holds before-state snapshots, so treat it like the data it protects.
 
-Overhead per tool call: <!-- TODO: measure and state method, e.g. "~X ms p50 on filesystem writes, M2 MacBook" -->
+Overhead: about 1.3 ms per file write at the median (2.3 ms vs 1.1 ms direct, 2 KB writes, 300 calls, Linux).
 
 ## Why not just…
 
 | Alternative | Where it wins | Where Retrace helps |
 |---|---|---|
-| Git / file checkpoints | Great for code | Doesn't cover databases or SaaS |
-| Database backups | Full recovery | Restores everything, not one agent's changes |
-| Human approval on every call | Maximum control | Slows agents down; Retrace only pauses irreversible steps |
+| Git / file checkpoints | Great for code | Doesn't cover databases |
+| Database backups / PITR | Full recovery | Rolls back *everything*, not just one agent's changes |
+| Approval prompts | Stops many mistakes | People still approve the wrong thing; undo is the backstop |
 
 ## Roadmap
 
-- [ ] GitHub and Slack adapters to stable
+- [ ] Approval gate for actions that can't be undone (sending email, payments)
+- [ ] GitHub and Slack adapters
+- [ ] Pluggable adapter API
 - [ ] Web UI for browsing runs
-- [ ] Python SDK for in-process use
-- [ ] Stripe, Notion, Google Workspace adapters
 
 See [open issues](https://github.com/kandimallasivaji9/retrace/issues).
 
 ## Contributing
 
-Adapters are the easiest way in. Each one is a small file with two functions: capture before-state and build the inverse. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the `good first issue` label.
+`npm test` runs everything end to end with a real MCP client and a throwaway Postgres; no setup needed. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [`good first issue`](https://github.com/kandimallasivaji9/retrace/labels/good%20first%20issue) label.
 
 If Retrace saved you from a bad agent run, a star helps others find it.
 
 ## License
 
-MIT
+[MIT](LICENSE)

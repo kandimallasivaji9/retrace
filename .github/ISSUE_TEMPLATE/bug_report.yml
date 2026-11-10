@@ -1,0 +1,23 @@
+name: Bug report
+description: Something didn't undo, or undid the wrong thing
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did the agent do, what did you run, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Output of `retrace log` and the failing command
+      render: shell
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "retrace-agent 0.2.0, Node 22, macOS 15, Claude Desktop / Postgres 18"
+    validations:
+      required: true

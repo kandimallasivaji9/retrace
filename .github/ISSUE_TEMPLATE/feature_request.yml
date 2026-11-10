@@ -1,0 +1,14 @@
+name: Feature or adapter request
+description: A tool you want Retrace to undo, or something it should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What did your agent do that you wished you could undo?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What should Retrace do about it?
