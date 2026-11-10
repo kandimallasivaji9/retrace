@@ -10,8 +10,9 @@ This is a staged reenactment, so label it that way in the launch post. Don't pre
 
 ## Setup (before recording)
 
-1. A local Postgres with a `customers` table seeded with 500 rows (`seed.sql`).
-2. Claude Desktop or Claude Code wrapped with Retrace on the Postgres MCP server.
+1. `npm run demo-db` in one terminal: a throwaway Postgres 18 with 500 customers (88 active this month).
+2. Claude Desktop pointed at `retrace postgres --url postgres://retrace:retrace@localhost:54329/demo`.
+3. `export RETRACE_PG_URL=postgres://retrace:retrace@localhost:54329/demo` in the terminal you record.
 3. A large terminal font (18–20pt), dark theme, about 100×28 columns.
 
 ## Shot list
@@ -19,7 +20,7 @@ This is a staged reenactment, so label it that way in the launch post. Don't pre
 | Time | On screen | Why |
 |---|---|---|
 | 0–3s | `SELECT count(*) FROM customers;` → **500** | Sets the baseline |
-| 3–7s | Agent prompt: *"Archive inactive customers."* Agent runs a `DELETE`. | The mistake |
+| 3–7s | Agent prompt: *"Clean up customers who haven't logged in since October."* Agent runs a `DELETE`. | The mistake (it deletes paying customers too) |
 | 7–9s | Count again → **88**. Pause one beat. | The "oh no" moment |
 | 9–12s | `retrace log` shows one red `DELETE … 412 rows` line | Shows Retrace saw it |
 | 12–15s | `retrace undo --run` → `✓ restored 412 rows` | The payoff |

@@ -2,6 +2,8 @@
 import path from "node:path";
 import { Command } from "commander";
 import { Journal, type Entry } from "./journal.js";
+import { startPostgresServer } from "./pg-server.js";
+import type { PgBefore } from "./pg-util.js";
 import { startProxy } from "./proxy.js";
 import { undoEntry, undoRun, type UndoOutcome } from "./undo.js";
 import { VERSION } from "./version.js";
@@ -22,6 +24,18 @@ function rel(p: string): string {
 
 function target(e: Entry): string {
   const a = JSON.parse(e.args);
+  if (e.before) {
+    const b = JSON.parse(e.before);
+    if (b?.kind === "postgres") {
+      const pg = b as PgBefore;
+      const tables = Object.values(pg.tables).map((t) => `${t.schema}.${t.name}`).join(", ");
+      return `${pg.command} ${pg.rows.length} row${pg.rows.length === 1 ? "" : "s"} in ${tables}`;
+    }
+  }
+  if (typeof a.sql === "string") {
+    const sql = a.sql.replace(/\s+/g, " ").trim();
+    return sql.length > 70 ? sql.slice(0, 67) + "..." : sql;
+  }
   if (a.source && a.destination) return `${rel(a.source)} → ${rel(a.destination)}`;
   if (a.path) return rel(a.path);
   return e.args.length > 60 ? e.args.slice(0, 57) + "..." : e.args;
@@ -66,6 +80,26 @@ program
   });
 
 program
+  .command("postgres")
+  .description("run Retrace's Postgres MCP server: every INSERT/UPDATE/DELETE is recorded and undoable (Postgres 18+)")
+  .option("--url <url>", "connection string (or set DATABASE_URL)")
+  .option("--dry-run", "run each write in a transaction, report what it would change, then roll back")
+  .option("--journal <path>")
+  .action(async (opts) => {
+    const url = opts.url ?? process.env.DATABASE_URL;
+    if (!url) {
+      console.error("Pass --url postgres://... or set DATABASE_URL.");
+      process.exit(1);
+    }
+    try {
+      await startPostgresServer(url, { journal: opts.journal, dryRun: !!opts.dryRun || process.env.RETRACE_DRY_RUN === "1" });
+    } catch (err: any) {
+      console.error(`[retrace] ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+program
   .command("log")
   .description("show what an agent did")
   .option("--run <id>", "a specific run (default: latest)")
@@ -95,19 +129,20 @@ program
   .argument("[id]", "action id from `retrace log`")
   .option("--run [runId]", "undo a whole run, newest step first (default: latest run)")
   .option("--force", "undo even if something changed after the agent")
+  .option("--url <url>", "Postgres connection string, if the recorded one needs a password")
   .option("--journal <path>")
   .action(async (id: string | undefined, opts) => {
     const j = new Journal(opts.journal);
     let outcomes: UndoOutcome[];
     if (opts.run) {
-      outcomes = await undoRun(j, findRun(j, opts.run), opts.force);
+      outcomes = await undoRun(j, findRun(j, opts.run), { force: opts.force, pgUrl: opts.url });
     } else if (id) {
       const e = j.get(Number(id.replace(/^#/, "")));
       if (!e) {
         console.error(`No action #${id}.`);
         process.exit(1);
       }
-      outcomes = [await undoEntry(j, e, opts.force)];
+      outcomes = [await undoEntry(j, e, { force: opts.force, pgUrl: opts.url })];
     } else {
       console.error("Pass an action id (retrace undo 12) or --run.");
       process.exit(1);

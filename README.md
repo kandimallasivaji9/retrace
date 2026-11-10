@@ -39,7 +39,7 @@ retrace undo --run     # roll back the whole run, newest step first
 | Upstream tool | Undo type | Status |
 |---|---|---|
 | Filesystem | Reversible (exact restore) | ✅ |
-| Postgres | Reversible (single-table DML) | ✅ |
+| Postgres 18+ (`retrace postgres`) | Reversible (INSERT / UPDATE / DELETE) | ✅ |
 | GitHub | Compensable (close, revert, recreate branch) | 🚧 |
 | Slack | Compensable (delete message) | 🚧 |
 | Stripe, Notion, Google Workspace | | Planned |
@@ -76,6 +76,25 @@ Every action falls into one of three classes:
 | **Compensable** | Retrace runs a reverse action | Close a created issue, delete a Slack message |
 | **Irreversible** | Can't be taken back, so it's held for approval | Sending an email |
 
+## Postgres
+
+Retrace ships its own Postgres MCP server. Reads work normally; every `INSERT`, `UPDATE` and `DELETE` is recorded row by row, so it can be undone exactly. Schema changes (`DROP`, `ALTER`, `TRUNCATE`) are blocked.
+
+```bash
+retrace postgres --url postgres://localhost/mydb
+```
+
+No database handy? `npm run demo-db` starts a throwaway Postgres 18 with 500 sample customers.
+
+```bash
+retrace log
+#  #1  execute  applied  DELETE 412 rows in public.customers
+retrace undo --run
+#  ✓ #1 execute undone
+```
+
+The journal never stores passwords. If your database needs one, set `RETRACE_PG_URL` (or pass `--url`) when you run `retrace undo`.
+
 ## Dry run
 
 Not sure what an agent will do? Let it plan first:
@@ -107,7 +126,8 @@ In `claude_desktop_config.json`, wrap any existing server:
 Retrace is honest about what it can't do:
 
 - **It can't unsend things.** A Slack message can be deleted, but someone may have already read it. Truly irreversible actions are held for approval instead.
-- **Postgres support is narrow at first.** Single-table `INSERT`, `UPDATE`, and `DELETE`. DDL, triggers, and cascades aren't reversed yet.
+- **Postgres needs version 18+** (Retrace uses `RETURNING old/new` to record changes). Tables need a primary key; writes to tables without one are refused.
+- **Cascades and triggers aren't reversed yet.** If deleting a row cascades to other tables, only the row the agent deleted comes back. `WITH` and `MERGE` statements are blocked for now.
 - **Dry runs don't simulate state.** If the agent "writes" a file during a dry run and then reads it, it sees the original. Tools Retrace can't preview are blocked, not run.
 - **Calls that skip the proxy aren't tracked.** If the agent reaches a system some other way, Retrace never sees it.
 - **Your data stays local.** The journal lives in `~/.retrace/journal.db` and includes before-state snapshots, so treat it like the data it protects.
