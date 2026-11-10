@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/retrace)](https://www.npmjs.com/package/retrace) <!-- TODO: confirm npm name is available; fallback: @retrace/cli -->
-[![CI](https://github.com/kandimallasivaji/retrace/actions/workflows/ci.yml/badge.svg)](https://github.com/kandimallasivaji/retrace/actions)
+[![CI](https://github.com/kandimallasivaji9/retrace/actions/workflows/ci.yml/badge.svg)](https://github.com/kandimallasivaji9/retrace/actions)
 [![MCP](https://img.shields.io/badge/MCP-compatible-purple)](https://modelcontextprotocol.io)
 
 <!-- TODO: replace with demo GIF (see DEMO_SCRIPT.md). Keep it under 5 MB and 20 seconds. -->
@@ -129,7 +129,7 @@ Overhead per tool call: <!-- TODO: measure and state method, e.g. "~X ms p50 on 
 - [ ] Python SDK for in-process use
 - [ ] Stripe, Notion, Google Workspace adapters
 
-See [open issues](https://github.com/kandimallasivaji/retrace/issues).
+See [open issues](https://github.com/kandimallasivaji9/retrace/issues).
 
 ## Contributing
 
