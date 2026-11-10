@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import path from "node:path";
 import { Command } from "commander";
 import { Journal, type Entry } from "./journal.js";
 import { startProxy } from "./proxy.js";
@@ -13,10 +14,16 @@ const program = new Command()
 
 const short = (id: string) => id.slice(0, 8);
 
+/** Show paths relative to where you run the command, so the log stays readable. */
+function rel(p: string): string {
+  const r = path.relative(process.cwd(), p);
+  return r && !r.startsWith("..") && !path.isAbsolute(r) ? r : p;
+}
+
 function target(e: Entry): string {
   const a = JSON.parse(e.args);
-  if (a.source && a.destination) return `${a.source} → ${a.destination}`;
-  if (a.path) return a.path;
+  if (a.source && a.destination) return `${rel(a.source)} → ${rel(a.destination)}`;
+  if (a.path) return rel(a.path);
   return e.args.length > 60 ? e.args.slice(0, 57) + "..." : e.args;
 }
 

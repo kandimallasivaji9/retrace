@@ -12,7 +12,7 @@ const journal = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "retrace-db-")),
 const env = { ...process.env, RETRACE_JOURNAL: journal };
 const cli = path.resolve("dist/cli.js");
 const fsServer = path.resolve("node_modules/@modelcontextprotocol/server-filesystem/dist/index.js");
-const retrace = (...args) => execFileSync("node", [cli, ...args], { env, encoding: "utf8" });
+const retrace = (...args) => execFileSync("node", [cli, ...args], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 const f = (name) => path.join(work, name);
 
 async function agentSession(actions) {
