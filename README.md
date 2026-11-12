@@ -47,7 +47,8 @@ Prefer not to install? Use `npx -y retrace-agent wrap -- ...` instead.
 | Client | Status |
 |---|---|
 | Claude Desktop | ✅ Tested |
-| Claude Code, Cursor, other stdio MCP clients | Should work (standard MCP over stdio). Reports welcome. |
+| Claude Code | ✅ Tested |
+| Cursor, other stdio MCP clients | Should work (standard MCP over stdio). Reports welcome. |
 
 ## Features
 
@@ -109,6 +110,16 @@ In Claude Desktop, open **Settings → Developer → Edit Config** and add:
 
 If Claude Desktop can't find `npx`, use its full path (`which npx`).
 
+## Use with Claude Code
+
+```bash
+claude mcp add -s user retrace-db -- npx -y retrace-agent postgres --url postgres://localhost/mydb
+claude mcp add -s user retrace-files -- npx -y retrace-agent wrap -- npx -y @modelcontextprotocol/server-filesystem ~/project
+claude mcp list   # both should show Connected
+```
+
+Claude Code also has its own built-in tools (Edit, Write, Bash). Changes made through those don't go through Retrace, so they aren't recorded. To make sure Retrace sees a change, ask Claude to use the `retrace-db` or `retrace-files` tools.
+
 ## How it works
 
 ```mermaid
@@ -132,7 +143,7 @@ Retrace is honest about what it can't do:
 - **Postgres needs version 18+**, and tables need a primary key.
 - **Cascades and triggers aren't reversed yet.** If a delete cascades to other tables, only the rows the agent deleted come back. `WITH` and `MERGE` statements are blocked for now.
 - **Dry runs don't simulate state.** If the agent "writes" a file during a dry run and then reads it, it sees the original.
-- **Only calls that go through Retrace are tracked.**
+- **Only calls that go through Retrace are tracked.** An agent's built-in tools (like Claude Code's Edit or Bash, or running `psql` directly) bypass it.
 - **Files over 10 MB aren't snapshotted**, and `create_directory` only removes the last folder it created.
 - **Your data stays local.** The journal at `~/.retrace/journal.db` holds before-state snapshots, so treat it like the data it protects.
 
